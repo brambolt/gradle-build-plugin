@@ -49,6 +49,15 @@ logger.quiet("""
 
 repositories {
   mavenLocal()
+  if (project.hasProperty('artifactoryContextUrl')) {
+    maven {
+      url = project.artifactoryContextUrl
+      credentials {
+        username = project.artifactoryUser
+        password = project.artifactoryToken
+      }
+    }
+  }
   maven {
     name = 'Plugin Portal'
     url = 'https://plugins.gradle.org/m2/'
@@ -96,6 +105,17 @@ jar {
   }
 }
 
+task javadocJar(type: Jar, dependsOn: ['javadoc']) {
+  classifier = 'javadoc'
+  from(javadoc)
+}
+
+task sourceJar(type: Jar, dependsOn: jar) {
+  classifier = 'sources'
+  from sourceSets.main.output
+  from sourceSets.main.allSource
+}
+
 publishing {
   publications {
     mavenJava(MavenPublication) {
@@ -103,32 +123,35 @@ publishing {
       artifactId = project.artifactId
       version = project.version
       from project.components.java
+      artifact(javadocJar)
+      artifact(sourceJar)
     }
   }
 }
 
-artifactory {
-  contextUrl = mavenContextUrl
-  publish {
-    repository {
-      repoKey = mavenRepoKey
-      username = mavenUser
-      password = mavenToken
-      maven = true
+if (project.hasProperty('artifactoryContextUrl'))
+  artifactory {
+    contextUrl = artifactoryContextUrl
+    publish {
+      repository {
+        repoKey = artifactoryRepoKey
+        username = artifactoryUser
+        password = artifactoryToken
+        maven = true
+      }
+      defaults {
+        publications('mavenJava')
+      }
     }
-    defaults {
-      publications('mavenJava')
+    resolve {
+      repository {
+        repoKey = artifactoryRepoKey
+        username = artifactoryUser
+        password = artifactoryToken
+        maven = true
+      }
     }
   }
-  resolve {
-    repository {
-      repoKey = mavenRepoKey
-      username = mavenUser
-      password = mavenToken
-      maven = true
-    }
-  }
-}
 
 gradlePlugin {
   plugins {

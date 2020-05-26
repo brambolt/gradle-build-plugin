@@ -3,10 +3,18 @@ package com.brambolt.gradle
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.tasks.bundling.Jar
 
+/**
+ * Configures a Gradle build to build and publish a Gradle plugin.
+ */
 class PluginBuildPlugin implements Plugin<Project> {
 
+  /**
+   * The plugins to apply to the plugin build project.
+   */
   List<String> pluginIds = [
     'java-gradle-plugin',
     'java-library',
@@ -17,6 +25,9 @@ class PluginBuildPlugin implements Plugin<Project> {
     'org.ajoberstar.grgit'
   ]
 
+  /**
+   * The project-specific properties that must be set.
+   */
   List<String> requiredProperties = [
     'artifactId',
     'pluginClass',
@@ -28,18 +39,42 @@ class PluginBuildPlugin implements Plugin<Project> {
     'vcsUrl'
   ]
 
+  /**
+   * Applies the plugin and configures the build.
+   * @param project The project to configure
+   */
   @Override
   void apply(Project project) {
     configurePlugins(project)
     checkProjectProperties(project)
     configureDerivedProperties(project)
     logProperties(project)
+    configureRepositories(project)
+    configureDependencies(project)
+    configureJavaPlugin(project)
+    configureJarTask(project)
+    configureJavadocJarTask(project)
+    configureSourceJarTask(project)
+    configurePublishing(project)
+    configureArtifactory(project)
+    configureGradlePlugin(project)
+    configurePluginBundle(project)
   }
 
+  /**
+   * Applies the plugins in the <code>pluginIds</code> list.
+   * @param project The project to configure
+   * @see #pluginIds
+   */
   void configurePlugins(Project project) {
     pluginIds.each { project.plugins.apply(it) }
   }
 
+  /**
+   * Checks that values have been provided for the required project properties.
+   * @param project The project to configure
+   * @see #requiredProperties
+   */
   void checkProjectProperties(project) {
     List<String> missing = []
     requiredProperties.each { String propertyName ->
@@ -51,10 +86,20 @@ class PluginBuildPlugin implements Plugin<Project> {
         "Missing project properties:\n  ${missing.join('\n  ')}")
   }
 
-  void isProjectPropertySet(Project project, String propertyName) {
+  /**
+   * Checks that the parameter property has a non-empty value for the parameter
+   * property name.
+   * @param project The project to check
+   * @param propertyName The property name to check
+   */
+  static boolean isProjectPropertySet(Project project, String propertyName) {
     project.hasProperty(propertyName) && !propertyName.isEmpty()
   }
 
+  /**
+   * Defines additional properties that are derived from the required properties.
+   * @param project The project to configure
+   */
   void configureDerivedProperties(Project project) {
     final String SNAPSHOT = 'SNAPSHOT'
     project.ext {
@@ -68,6 +113,10 @@ class PluginBuildPlugin implements Plugin<Project> {
       : SNAPSHOT)
   }
 
+  /**
+   * Logs the required and derived project properties.
+   * @param project The project to configure
+   */
   void logProperties(Project project) {
     project.logger.quiet("""
   Artifact id:          ${project.artifactId}
@@ -85,18 +134,33 @@ class PluginBuildPlugin implements Plugin<Project> {
   Version:              ${project.version}""")
   }
 
+  /**
+   * Adds repository definitions.
+   * @param project The project to configure
+   */
   void configureRepositories(Project project) {
     project.repositories {
+      mavenLocal()
+      maven {
+        url = project.artifactoryContextUrl
+        credentials {
+          username = project.artifactoryUser
+          password = project.artifactoryToken
+        }
+      }
       maven {
         name = 'Plugin Portal'
         url = 'https://plugins.gradle.org/m2/'
       }
-      mavenLocal()
       mavenCentral()
       jcenter()
     }
   }
 
+  /**
+   * Adds dependencies.
+   * @param project The project to configure
+   */
   void configureDependencies(Project project) {
     project.dependencies {
       implementation(project.gradleApi())
@@ -110,6 +174,10 @@ class PluginBuildPlugin implements Plugin<Project> {
     }
   }
 
+  /**
+   * Configures the Java plugin including source and target compatibility.
+   * @param project The project to configure
+   */
   void configureJavaPlugin(Project project) {
     project.sourceCompatibility = 14
     project.targetCompatibility = 8
@@ -123,6 +191,10 @@ class PluginBuildPlugin implements Plugin<Project> {
     project.compileTestJava.options.encoding = 'UTF-8'
   }
 
+  /**
+   * Configures jar task including manifest attributes.
+   * @param project The project to configure
+   */
   void configureJarTask(Project project) {
     project.jar {
       baseName = project.artifactId
@@ -139,6 +211,37 @@ class PluginBuildPlugin implements Plugin<Project> {
     }
   }
 
+  /**
+   * Configures the Javadoc jar task.
+   * @param project The project to configure
+   */
+  void configureJavadocJarTask(Project project) {
+    Jar jar = project.task([type: Jar], 'javadocJar') as Jar
+    jar.configure { Task t ->
+      t.dependsOn('javadoc')
+      t.classifier = 'javadoc'
+      t.from(project.property('javadoc'))
+    }
+  }
+
+  /**
+   * Configures the source jar task.
+   * @param project The project to configure
+   */
+  void configureSourceJarTask(Project project) {
+    Jar jar = project.task([type: Jar], 'sourceJar') as Jar
+    jar.configure { Task t ->
+      t.dependsOn('jar')
+      t.classifier = 'sources'
+      t.from(project.mainSourceSet.getOutput())
+      t.from(project.mainSourceSet.getAllSource())
+    }
+  }
+
+  /**
+   * Configures publishing.
+   * @param project The project to configure
+   */
   void configurePublishing(Project project) {
     project.publishing {
       publications {
@@ -152,49 +255,74 @@ class PluginBuildPlugin implements Plugin<Project> {
     }
   }
 
-/*
-publishing {
-  repositories {
-    maven {
-      name = 'bintray'
-      url = 'https://api.bintray.com/maven/ajoberstar/maven/gradle-defaults/;publish=1'
-      credentials {
-        username = System.env['BINTRAY_USER']
-        password = System.env['BINTRAY_KEY']
-      }
-    }
-  }
-}
-*/
+  /**
+   * Configures Artifactory publishing. Disabled by default.
+   *
+   * Set <code>artifactoryContextUrl</code>, <code>artifactoryRepoKey</code>,
+   * <code>artifactoryUser</code> and <code>artifactoryToken</code> to enable
+   * Artifactory publishing.
+   *
+   * @param project The project to configure
+   */
   void configureArtifactory(Project project) {
-    project.artifactory {
-      contextUrl = project.mavenContextUrl
-      publish {
-        repository {
-          repoKey = project.mavenRepoKey
-          username = project.mavenUser
-          password = project.mavenToken
-          maven = true
+    if (project.hasProperty('artifactoryContextUrl'))
+      project.artifactory {
+        contextUrl = project.artifactoryContextUrl
+        publish {
+          repository {
+            repoKey = project.artifactoryRepoKey
+            username = project.artifactoryUser
+            password = project.artifactoryToken
+            maven = true
+          }
+          defaults {
+            publications('mavenJava')
+          }
         }
-        defaults {
-          publications('mavenJava')
+        resolve {
+          repository {
+            repoKey = project.artifactoryRepoKey
+            username = project.artifactoryUser
+            password = project.artifactoryToken
+            maven = true
+          }
         }
       }
-      resolve {
-        repository {
-          repoKey = project.mavenRepoKey
-          username = project.mavenUser
-          password = project.mavenToken
-          maven = true
-        }
-      }
-    }
   }
 
+  /**
+   * Configures Bintray publishing. Disabled by default.
+   *
+   * Set <code>bintrayContextUrl</code>, <code>bintrayUser</code> and
+   * <code>bintrayKey</code> to enable Bintray publishing.
+   *
+   * @param project The project to configure
+   */
+  void configureBintray(Project project) {
+    if (project.hasProperty('bintrayContextUrl'))
+      project.publishing {
+        repositories {
+          maven {
+            name = 'bintray'
+            url = project.bintrayContextUrl
+            credentials {
+              username = project.bintrayUser
+              password = project.bintrayKey
+            }
+          }
+        }
+      }
+    }
+
+  /**
+   * Configures the Gradle plugin to build and publish.
+   *
+   * @param project The project to configure
+   */
   void configureGradlePlugin(Project project) {
     project.gradlePlugin {
       plugins {
-        patchingPlugin {
+        thePlugin {
           id = project.pluginId
           implementationClass = project.pluginClass
         }
@@ -202,6 +330,11 @@ publishing {
     }
   }
 
+  /**
+   * Configures the plugin bundle being published.
+   *
+   * @param project The project to configure
+   */
   void configurePluginBundle(Project project) {
     project.pluginBundle {
       website = project.pluginWebsite
@@ -209,7 +342,7 @@ publishing {
       description = project.description
       tags = project.pluginTags
       plugins {
-        patchingPlugin {
+        thePlugin {
           displayName = project.pluginDisplayName
         }
       }
