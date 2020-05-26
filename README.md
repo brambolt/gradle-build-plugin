@@ -1,3 +1,3 @@
 
-A simple build for Gradle plugins.
+A plugin to build and publish Gradle plugins.
 
