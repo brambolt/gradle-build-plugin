@@ -18,7 +18,7 @@ node {
         usernameVariable: 'ORG_GRADLE_PROJECT_vcsUser',
         passwordVariable: 'ORG_GRADLE_PROJECT_vcsToken')]) {
 
-      withEnv([ "GRADLE_OPTS=-Dgradle.user.home=${env.HOME}/.gradle " ]) {
+      withEnv([ "GRADLE_OPTS=-Dgradle.user.home=${env.HOME}/.gradle" ]) {
         sh 'echo ${GRADLE_OPTS}'
         sh './gradlew clean artifactoryPublish -PbuildNumber=${BUILD_NUMBER} --info --stacktrace --refresh-dependencies'
       }
