@@ -4,7 +4,9 @@ import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.artifacts.dsl.DependencyHandler
 import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.bundling.Jar
 
 /**
@@ -45,6 +47,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   @Override
   void apply(Project project) {
+    project.logger.debug("Applying ${getClass().getCanonicalName()}.")
     configurePlugins(project)
     checkProjectProperties(project)
     configureDerivedProperties(project)
@@ -59,6 +62,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     configureArtifactory(project)
     configureGradlePlugin(project)
     configurePluginBundle(project)
+    configureDefaultTasks(project)
   }
 
   /**
@@ -87,13 +91,22 @@ class PluginBuildPlugin implements Plugin<Project> {
   }
 
   /**
-   * Checks that the parameter property has a non-empty value for the parameter
-   * property name.
+   * Checks that the parameter property has a non-empty string or collection
+   * value for the parameter property name.
    * @param project The project to check
    * @param propertyName The property name to check
    */
   static boolean isProjectPropertySet(Project project, String propertyName) {
-    project.hasProperty(propertyName) && !propertyName.isEmpty()
+    if (!project.hasProperty(propertyName))
+      return false
+    Object value = project[propertyName]
+    if (null == value)
+      return false
+    if (value instanceof String || value instanceof GString)
+      return !value.toString().isEmpty()
+    if (value instanceof Collection)
+      return !(value as Collection).isEmpty()
+    true // Not null, not empty string or empty collection - fine then
   }
 
   /**
@@ -118,7 +131,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void logProperties(Project project) {
-    project.logger.quiet("""
+    project.logger.info("""
   Artifact id:          ${project.artifactId}
   Branch:               ${project.vcsBranch}
   Commit:               ${project.vcsCommit}
@@ -131,7 +144,8 @@ class PluginBuildPlugin implements Plugin<Project> {
   Plugin tags:          ${project.pluginTags}
   Plugin website:       ${project.pluginWebsite}
   VCS URL:              ${project.vcsUrl}
-  Version:              ${project.version}""")
+  Version:              ${project.version}
+""")
   }
 
   /**
@@ -141,11 +155,14 @@ class PluginBuildPlugin implements Plugin<Project> {
   void configureRepositories(Project project) {
     project.repositories {
       mavenLocal()
-      maven {
-        url = project.artifactoryContextUrl
-        credentials {
-          username = project.artifactoryUser
-          password = project.artifactoryToken
+      if (project.hasProperty('artifactoryContextUrl')) {
+        maven {
+          url = project.artifactoryContextUrl
+          if (project.hasProperty('artifactoryToken'))
+            credentials {
+              username = project.artifactoryUser
+              password = project.artifactoryToken
+            }
         }
       }
       maven {
@@ -163,14 +180,10 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   void configureDependencies(Project project) {
     project.dependencies {
-      implementation(project.gradleApi())
-      implementation(project.localGroovy())
-      implementation('com.gradle.publish:plugin-publish-plugin:latest.release')
-      implementation('com.jfrog.artifactory:com.jfrog.artifactory.gradle.plugin:latest.release')
-      testImplementation('org.slf4j:slf4j-api:latest.release')
-      testImplementation('junit:junit:latest.release')
-      testImplementation('org.spockframework:spock-core:1.3-groovy-2.5')
-      testRuntime('org.slf4j:slf4j-simple:latest.release')
+      DependencyHandler handler = project.getDependencies()
+      handler.add('implementation', handler.gradleApi())
+      handler.add('implementation', handler.localGroovy())
+      // No test dependencies are added here
     }
   }
 
@@ -181,12 +194,6 @@ class PluginBuildPlugin implements Plugin<Project> {
   void configureJavaPlugin(Project project) {
     project.sourceCompatibility = 14
     project.targetCompatibility = 8
-    project.sourceSets {
-      compatTest {
-        compileClasspath += project.main.output
-        runtimeClasspath += project.main.output
-      }
-    }
     project.compileJava.options.encoding = 'UTF-8'
     project.compileTestJava.options.encoding = 'UTF-8'
   }
@@ -197,6 +204,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   void configureJarTask(Project project) {
     project.jar {
+      dependsOn(['test'])
       baseName = project.artifactId
       manifest {
         attributes([
@@ -229,12 +237,13 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureSourceJarTask(Project project) {
+    SourceSet main = project.sourceSets.getByName('main')
     Jar jar = project.task([type: Jar], 'sourceJar') as Jar
     jar.configure { Task t ->
       t.dependsOn('jar')
       t.classifier = 'sources'
-      t.from(project.mainSourceSet.getOutput())
-      t.from(project.mainSourceSet.getAllSource())
+      t.from(main.getOutput())
+      t.from(main.getAllSource())
     }
   }
 
@@ -250,6 +259,8 @@ class PluginBuildPlugin implements Plugin<Project> {
           artifactId = project.artifactId
           version = project.version
           from project.components.java
+          artifact(project.javadocJar)
+          artifact(project.sourceJar)
         }
       }
     }
@@ -265,7 +276,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureArtifactory(Project project) {
-    if (project.hasProperty('artifactoryContextUrl'))
+    if (project.hasProperty('artifactoryContextUrl')) {
       project.artifactory {
         contextUrl = project.artifactoryContextUrl
         publish {
@@ -288,6 +299,9 @@ class PluginBuildPlugin implements Plugin<Project> {
           }
         }
       }
+      project.tasks.getByName('artifactoryPublish').dependsOn(
+        project.tasks.getByName('publishToMavenLocal'))
+    }
   }
 
   /**
@@ -347,5 +361,20 @@ class PluginBuildPlugin implements Plugin<Project> {
         }
       }
     }
+  }
+
+  /**
+   * Configures the <code>local</code> and <code>all</code> tasks and assigns
+   * all as the project default.
+   *
+   * @param project The project to configure
+   */
+  void configureDefaultTasks(Project project) {
+    project.task('local').dependsOn(['publishToMavenLocal'])
+    Task all = project.task('all')
+    all.dependsOn(['local'])
+    if (project.hasProperty('artifactoryContextUrl'))
+      all.dependsOn(['artifactoryContextUrl'])
+    project.setDefaultTasks([all.name])
   }
 }

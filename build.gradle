@@ -129,7 +129,7 @@ publishing {
   }
 }
 
-if (project.hasProperty('artifactoryContextUrl'))
+if (project.hasProperty('artifactoryContextUrl')) {
   artifactory {
     contextUrl = artifactoryContextUrl
     publish {
@@ -152,6 +152,8 @@ if (project.hasProperty('artifactoryContextUrl'))
       }
     }
   }
+  artifactoryPublish.dependsOn(publishToMavenLocal)
+}
 
 gradlePlugin {
   plugins {
@@ -178,4 +180,11 @@ pluginBundle {
     version = project.version
   }
 }
+
+task local(dependsOn: publishToMavenLocal)
+
+task all(dependsOn: local)
+
+if (project.hasProperty('artifactoryContextUrl'))
+  all.dependsOn(['artifactoryPublish'])
 
