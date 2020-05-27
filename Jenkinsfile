@@ -9,7 +9,8 @@ node {
 
     withCredentials(
       [usernamePassword(
-        credentialsId: env.JENKINS_MAVEN_CREDS,
+        // credentialsId: env.JENKINS_MAVEN_CREDS,
+        credentialsId: 'artifactory.brambolt.io',
         usernameVariable: 'ORG_GRADLE_PROJECT_mavenUser',
         passwordVariable: 'ORG_GRADLE_PROJECT_mavenToken'),
        usernamePassword(
