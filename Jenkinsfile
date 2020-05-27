@@ -19,7 +19,7 @@ node {
 
       withEnv([ "GRADLE_OPTS=-Dgradle.user.home=${env.HOME}/.gradle" ]) {
         sh "echo ${GRADLE_OPTS}"
-        sh "./gradlew clean artifactoryPublish -PbuildNumber=${BUILD_NUMBER} --info --stacktrace --refresh-dependencies"
+        sh "./gradlew clean all -PbuildNumber=${BUILD_NUMBER} --info --stacktrace --refresh-dependencies"
       }
     }
   }

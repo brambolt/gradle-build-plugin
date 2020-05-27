@@ -225,11 +225,10 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   void configureJavadocJarTask(Project project) {
     Jar jar = project.task([type: Jar], 'javadocJar') as Jar
-    jar.configure { Task t ->
-      t.dependsOn('javadoc')
-      t.classifier = 'javadoc'
-      t.from(project.property('javadoc'))
-    }
+    jar.baseName = project.artifactId
+    jar.dependsOn('javadoc')
+    jar.classifier = 'javadoc'
+    jar.from(project.property('javadoc'))
   }
 
   /**
@@ -239,12 +238,11 @@ class PluginBuildPlugin implements Plugin<Project> {
   void configureSourceJarTask(Project project) {
     SourceSet main = project.sourceSets.getByName('main')
     Jar jar = project.task([type: Jar], 'sourceJar') as Jar
-    jar.configure { Task t ->
-      t.dependsOn('jar')
-      t.classifier = 'sources'
-      t.from(main.getOutput())
-      t.from(main.getAllSource())
-    }
+    jar.baseName = project.artifactId
+    jar.dependsOn('jar')
+    jar.classifier = 'sources'
+    jar.from(main.getOutput())
+    jar.from(main.getAllSource())
   }
 
   /**
@@ -371,10 +369,11 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   void configureDefaultTasks(Project project) {
     project.task('local').dependsOn(['publishToMavenLocal'])
-    Task all = project.task('all')
-    all.dependsOn(['local'])
     if (project.hasProperty('artifactoryContextUrl'))
-      all.dependsOn(['artifactoryContextUrl'])
+      project.tasks.getByName('publishPlugins')
+        .dependsOn(['local', 'artifactoryPublish'])
+    Task all = project.task('all')
+    all.dependsOn(['publishPlugins'])
     project.setDefaultTasks([all.name])
   }
 }
