@@ -1,5 +1,4 @@
 
-
 node {
 
   stage('checkout') {
@@ -19,8 +18,8 @@ node {
         passwordVariable: 'ORG_GRADLE_PROJECT_vcsToken')]) {
 
       withEnv([ "GRADLE_OPTS=-Dgradle.user.home=${env.HOME}/.gradle" ]) {
-        sh 'echo ${GRADLE_OPTS}'
-        sh './gradlew clean artifactoryPublish -PbuildNumber=${BUILD_NUMBER} --info --stacktrace --refresh-dependencies'
+        sh "echo ${GRADLE_OPTS}"
+        sh "./gradlew clean artifactoryPublish -PbuildNumber=${BUILD_NUMBER} --info --stacktrace --refresh-dependencies"
       }
     }
   }
