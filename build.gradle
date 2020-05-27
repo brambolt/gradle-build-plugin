@@ -157,7 +157,7 @@ if (project.hasProperty('artifactoryContextUrl')) {
 
 gradlePlugin {
   plugins {
-    patchingPlugin {
+    pluginPlugin {
       id = project.pluginId
       implementationClass = project.pluginClass
     }
@@ -169,7 +169,7 @@ pluginBundle {
   vcsUrl = project.vcsUrl
   description = project.description
   plugins {
-    patchingPlugin {
+    pluginPlugin {
       displayName = project.pluginDisplayName
       tags = project.pluginTags
     }
@@ -185,6 +185,8 @@ task local(dependsOn: publishToMavenLocal)
 
 task all(dependsOn: local)
 
-if (project.hasProperty('artifactoryContextUrl'))
+if (project.hasProperty('artifactoryContextUrl')) {
+  tasks.getByName('publishPlugins').dependsOn(['artifactoryPublish'])
   all.dependsOn(['artifactoryPublish'])
+}
 
