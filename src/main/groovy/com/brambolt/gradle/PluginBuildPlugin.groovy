@@ -14,6 +14,8 @@ import org.gradle.api.tasks.bundling.Jar
  */
 class PluginBuildPlugin implements Plugin<Project> {
 
+  static final String SNAPSHOT = 'SNAPSHOT'
+
   /**
    * The plugins to apply to the plugin build project.
    */
@@ -114,7 +116,6 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureDerivedProperties(Project project) {
-    final String SNAPSHOT = 'SNAPSHOT'
     project.ext {
       buildNumber = project.hasProperty('buildNumber') ? project.buildNumber : SNAPSHOT
       buildDate = project.hasProperty('buildDate') ? project.buildDate : new Date()
@@ -192,7 +193,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureJavaPlugin(Project project) {
-    project.sourceCompatibility = 14
+    project.sourceCompatibility = 8
     project.targetCompatibility = 8
     project.compileJava.options.encoding = 'UTF-8'
     project.compileTestJava.options.encoding = 'UTF-8'
@@ -316,7 +317,7 @@ class PluginBuildPlugin implements Plugin<Project> {
         repositories {
           maven {
             name = 'bintray'
-            url = project.bintrayContextUrl
+            url = "${project.bintrayContextUrl}/${project.bintrayRepoKey}"
             credentials {
               username = project.bintrayUser
               password = project.bintrayKey
@@ -358,6 +359,9 @@ class PluginBuildPlugin implements Plugin<Project> {
           displayName = project.pluginDisplayName
         }
       }
+    }
+    project.tasks.getByName('publishPlugins').configure {
+      onlyIf { SNAPSHOT != project.version }
     }
   }
 
