@@ -183,10 +183,14 @@ pluginBundle {
 
 task local(dependsOn: publishToMavenLocal)
 
-task all(dependsOn: local)
+publishPlugins {
+  dependsOn(local)
+}
+
+task all(dependsOn: publishPlugins)
 
 if (project.hasProperty('artifactoryContextUrl')) {
-  tasks.getByName('publishPlugins').dependsOn(['artifactoryPublish'])
+  publishPlugins.dependsOn(['artifactoryPublish'])
   all.dependsOn(['artifactoryPublish'])
 }
 
