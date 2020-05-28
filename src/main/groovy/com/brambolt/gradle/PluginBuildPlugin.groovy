@@ -372,7 +372,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureDefaultTasks(Project project) {
-    project.task('local').dependsOn(['publishToMavenLocal'])
+    project.tasks.getByName('local').dependsOn(['publishToMavenLocal'])
     if (project.hasProperty('artifactoryContextUrl'))
       project.tasks.getByName('publishPlugins')
         .dependsOn(['local', 'artifactoryPublish'])
