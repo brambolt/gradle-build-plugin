@@ -26,6 +26,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     'maven-publish',
     'com.gradle.plugin-publish',
     'com.jfrog.artifactory',
+    'com.jfrog.bintray',
     'org.ajoberstar.grgit'
   ]
 
@@ -34,6 +35,9 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   List<String> requiredProperties = [
     'artifactId',
+    'developers',
+    'inceptionYear',
+    'licenses',
     'pluginClass',
     'pluginDisplayName',
     'pluginId',
@@ -62,6 +66,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     configureSourceJarTask(project)
     configurePublishing(project)
     configureArtifactory(project)
+    configureBintray(project)
     configureGradlePlugin(project)
     configurePluginBundle(project)
     configureDefaultTasks(project)
@@ -102,13 +107,16 @@ class PluginBuildPlugin implements Plugin<Project> {
     if (!project.hasProperty(propertyName))
       return false
     Object value = project[propertyName]
-    if (null == value)
-      return false
-    if (value instanceof String || value instanceof GString)
-      return !value.toString().isEmpty()
-    if (value instanceof Collection)
-      return !(value as Collection).isEmpty()
-    true // Not null, not empty string or empty collection - fine then
+    switch (value) {
+      case null:
+        return false
+      case { it instanceof String || it instanceof GString }:
+        return !value.toString().isEmpty()
+      case { it instanceof Collection }:
+        return !(value as Collection).isEmpty()
+      default:
+        return true // Not null, not empty string or empty collection - okay
+    }
   }
 
   /**
@@ -184,7 +192,7 @@ class PluginBuildPlugin implements Plugin<Project> {
       DependencyHandler handler = project.getDependencies()
       handler.add('implementation', handler.gradleApi())
       handler.add('implementation', handler.localGroovy())
-      // No test dependencies are added here
+      // Test dependencies are added explicitly via testkit
     }
   }
 
@@ -251,15 +259,46 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configurePublishing(Project project) {
+    def pomMetaData = {
+      licenses {
+        project.licenses.each { l ->
+          license {
+            name l.name
+            url l.url
+            distribution 'repo'
+          }
+        }
+      }
+      developers {
+        project.developers.each { dev ->
+          developer {
+            id dev.id
+            name dev.name
+            email dev.email
+          }
+        }
+      }
+      scm {
+        url project.vcsUrl
+      }
+    }
     project.publishing {
       publications {
         mavenJava(MavenPublication) {
-          groupId = project.group
           artifactId = project.artifactId
+          groupId = project.group
           version = project.version
           from project.components.java
           artifact(project.javadocJar)
           artifact(project.sourceJar)
+          pom.withXml {
+            def root = asNode()
+            root.appendNode('description', project.description)
+            root.appendNode('inceptionYear', project.inceptionYear)
+            root.appendNode('name', project.name)
+            root.appendNode('url', project.vcsUrl)
+            root.children().last() + pomMetaData
+          }
         }
       }
     }
@@ -287,6 +326,8 @@ class PluginBuildPlugin implements Plugin<Project> {
           }
           defaults {
             publications('mavenJava')
+            publishArtifacts = true
+            publishPom = true
           }
         }
         resolve {
@@ -325,7 +366,25 @@ class PluginBuildPlugin implements Plugin<Project> {
           }
         }
       }
+    project.bintray {
+      user = project.bintrayUser
+      key = project.bintrayKey
+      publications = ['mavenJava']
+      pkg {
+        repo = 'public'
+        name = project.artifactId.toString()
+        userOrg = project.bintrayUser
+        licenses = project.licenses.collect { it.id }
+        vcsUrl = project.vcsUrl
+        version {
+          desc = project.version.toString()
+          name = project.version.toString()
+          released  = new Date()
+        }
+      }
+      publish = true
     }
+  }
 
   /**
    * Configures the Gradle plugin to build and publish.
@@ -372,12 +431,18 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureDefaultTasks(Project project) {
-    project.tasks.getByName('local').dependsOn(['publishToMavenLocal'])
-    if (project.hasProperty('artifactoryContextUrl'))
+    project.task('local').dependsOn(['publishToMavenLocal'])
+    if (project.hasProperty('artifactoryContextUrl')) {
       project.tasks.getByName('publishPlugins')
         .dependsOn(['local', 'artifactoryPublish'])
+      if (project.hasProperty('bintrayContextUrl'))
+        project.tasks.getByName('bintrayUpload')
+          .dependsOn(['local', 'artifactoryPublish'])
+    }
     Task all = project.task('all')
     all.dependsOn(['publishPlugins'])
+    if (project.hasProperty('bintrayContextUrl'))
+      all.dependsOn(['bintrayUpload'])
     project.setDefaultTasks([all.name])
   }
 }

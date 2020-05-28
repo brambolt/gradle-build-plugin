@@ -8,6 +8,17 @@ group = 'com.brambolt.gradle'
 
 ext {
   artifactId = 'brambolt-gradle-plugin-build'
+  developers = [[
+    email: 'stefan.sigurdsson@brambolt.com',
+    id: 'stefan.sigurdsson@brambolt.com',
+    name: 'Stefán Sigurðsson'
+  ]]
+  inceptionYear = '2017'
+  licenses = [[
+    id: 'Apache-2.0',
+    name: 'The Apache Software License, Version 2.0',
+    url: 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+  ]]
   pluginClass = 'com.brambolt.gradle.PluginBuildPlugin'
   pluginDisplayName = 'Brambolt Plugin Build plugin'
   pluginId = 'com.brambolt.gradle.pluginbuild'
@@ -22,6 +33,7 @@ apply plugin: 'com.brambolt.gradle.pluginbuild'
 dependencies {
   implementation 'com.gradle.publish:plugin-publish-plugin:latest.release'
   implementation 'com.jfrog.artifactory:com.jfrog.artifactory.gradle.plugin:latest.release'
+  implementation 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.5'
   implementation 'org.ajoberstar.grgit:grgit-gradle:latest.release'
   testImplementation 'org.slf4j:slf4j-api:latest.release'
   testImplementation 'junit:junit:latest.release'
