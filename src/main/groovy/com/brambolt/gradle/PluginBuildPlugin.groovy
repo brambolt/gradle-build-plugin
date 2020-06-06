@@ -250,7 +250,6 @@ class PluginBuildPlugin implements Plugin<Project> {
     jar.baseName = project.artifactId
     jar.dependsOn('jar')
     jar.classifier = 'sources'
-    jar.from(main.getOutput())
     jar.from(main.getAllSource())
   }
 

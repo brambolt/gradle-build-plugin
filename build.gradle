@@ -1,6 +1,6 @@
 
 plugins {
-  id 'com.brambolt.gradle.pluginbuild' version '2020.05.25-4025' apply false
+  id 'com.brambolt.gradle.pluginbuild' apply false
 }
 
 description = 'A Gradle plugin for building Gradle plugins.'
