@@ -16,6 +16,10 @@ class PluginBuildPlugin implements Plugin<Project> {
 
   static final String SNAPSHOT = 'SNAPSHOT'
 
+  static final String SHADOW_PLUGIN_ID = 'com.github.johnrengelman.shadow'
+
+  static final String SHADOW_PLUGIN_INCLUSION = 'com.brambolt.gradle.pluginbuild.buildShadowJar'
+
   /**
    * The plugins to apply to the plugin build project.
    */
@@ -24,11 +28,20 @@ class PluginBuildPlugin implements Plugin<Project> {
     'java-library',
     'groovy',
     'maven-publish',
+    SHADOW_PLUGIN_ID,
     'com.gradle.plugin-publish',
     'com.jfrog.artifactory',
     'com.jfrog.bintray',
     'org.ajoberstar.grgit'
   ]
+
+  /**
+   * Maps plugin identifier to project property. If a plugin identifier
+   * is included in this map then the plugin will only be applied if the
+   * project property is present with a non-empty value.
+   */
+  Map<String, String> pluginInclusion = [:]
+
 
   /**
    * The project-specific properties that must be set.
@@ -47,6 +60,10 @@ class PluginBuildPlugin implements Plugin<Project> {
     'vcsUrl'
   ]
 
+  PluginBuildPlugin() {
+    pluginInclusion[SHADOW_PLUGIN_ID] = SHADOW_PLUGIN_INCLUSION
+  }
+
   /**
    * Applies the plugin and configures the build.
    * @param project The project to configure
@@ -64,6 +81,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     configureJarTask(project)
     configureJavadocJarTask(project)
     configureSourceJarTask(project)
+    configureShadowJarTask(project)
     configurePublishing(project)
     configureArtifactory(project)
     configureBintray(project)
@@ -78,7 +96,55 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @see #pluginIds
    */
   void configurePlugins(Project project) {
-    pluginIds.each { project.plugins.apply(it) }
+    pluginIds.each { String pluginId -> configurePlugin(project, pluginId) }
+  }
+
+  /**
+   * Applies the plugin identified by the parameter plugin identifier. If the
+   * plugin identifier is included as a key in the <code>pluginInclusion</code>
+   * map then it will only be applied if the value is present as a property on
+   * the project with a non-empty value.
+   * @param project The project to apply the plugin to
+   * @param id The identifier of the plugin to apply
+   */
+  void configurePlugin(Project project, String id) {
+    if (shouldApplyPlugin(project, id)) {
+      project.logger.debug("Applying plugin ${id}.")
+      project.plugins.apply(id)
+    }
+  }
+
+  /**
+   * Uses the <code>pluginInclusion</code> map to determine whether the
+   * plugin identified by the parameter identifier should be applied to the
+   * project. The map associates plugins with project properties; the plugins
+   * should be applied if the map either does not contain the identifier (but
+   * the plugins list has it) or the map points to a project property with a
+   * non-empty value.
+   * @param project The project being configured
+   * @param pluginId The plugin identifier
+   * @return True iff the plugin should be applied to the project
+   */
+  boolean shouldApplyPlugin(Project project, String pluginId) {
+    // The inclusion map constrains what can be included.
+    // If the identifier is not in the inclusion map, we can just include it:
+    !pluginInclusion.containsKey(pluginId) ||
+      // But if it is in the map, then the property named needs to be there:
+      isProjectPropertySet(project, pluginInclusion[pluginId])
+  }
+
+  /**
+   * Determines whether the produced artifacts should be published to Bintray.
+   * Bintray publishing is enabled when the Bintray URL and credential project
+   * properties are provided, and the project build number is not SNAPSHOT.
+   * (Bintray does not provide snapshot publishing; attempts to publish
+   * snapshots simply crash the build.)
+   * @param project The project being configured
+   * @return True iff artifacts should be published to Bintray
+   */
+  boolean isBintrayPublishingEnabled(Project project) {
+    project.hasProperty('bintrayContextUrl') &&
+      (SNAPSHOT != project.buildNumber)
   }
 
   /**
@@ -117,6 +183,17 @@ class PluginBuildPlugin implements Plugin<Project> {
       default:
         return true // Not null, not empty string or empty collection - okay
     }
+  }
+
+  /**
+   * Checks whether a shadow jar should be built. This is determined by the
+   * presence of the <code>buildShadowJar</code> project property, with a
+   * non-empty value.
+   * @param project The project to check
+   * @return True iff a shadow jar should be built, else false
+   */
+  static boolean shouldBuildShadowJar(Project project) {
+    isProjectPropertySet(project, SHADOW_PLUGIN_INCLUSION)
   }
 
   /**
@@ -190,9 +267,12 @@ class PluginBuildPlugin implements Plugin<Project> {
   void configureDependencies(Project project) {
     project.dependencies {
       DependencyHandler handler = project.getDependencies()
-      handler.add('implementation', handler.gradleApi())
-      handler.add('implementation', handler.localGroovy())
-      // Test dependencies are added explicitly via testkit
+      // If we are building a shadow jar then the Gradle API and local
+      // Groovy dependencies need to be added to the shadow configuration:
+      String maybeShadowOverride = (shouldBuildShadowJar() ? 'shadow' : 'implementation')
+      handler.add(maybeShadowOverride, handler.gradleApi())
+      handler.add(maybeShadowOverride, handler.localGroovy())
+      // Test dependencies are added explicitly via testkit, not here.
     }
   }
 
@@ -254,6 +334,18 @@ class PluginBuildPlugin implements Plugin<Project> {
   }
 
   /**
+   * Configures the shadow jar task.
+   * @param project The project being configured
+   */
+  void configureShadowJarTask(Project project) {
+    if (shouldBuildShadowJar(project))
+      project.shadowJar {
+        dependsOn(project.jar)
+        zip64 = true
+      }
+  }
+
+  /**
    * Configures publishing.
    * @param project The project to configure
    */
@@ -290,6 +382,9 @@ class PluginBuildPlugin implements Plugin<Project> {
           from project.components.java
           artifact(project.javadocJar)
           artifact(project.sourceJar)
+          // As of com.github.johnrengelman.shadow 6.0.0 we no londer need to
+          // explicitly add a shadow jar artifact here (and doing so causes a
+          // conflict because the plugin automatically does it...).
           pom.withXml {
             def root = asNode()
             root.appendNode('description', project.description)
@@ -352,7 +447,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureBintray(Project project) {
-    if (project.hasProperty('bintrayContextUrl'))
+    if (isBintrayPublishingEnabled(project))
       project.publishing {
         repositories {
           maven {
@@ -382,6 +477,10 @@ class PluginBuildPlugin implements Plugin<Project> {
         }
       }
       publish = true
+    }
+    project.bintrayUpload {
+      // Disable Bintray upload if creating a snapshot version:
+      onlyIf { isBintrayPublishingEnabled(project) }
     }
   }
 
@@ -430,10 +529,13 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   void configureDefaultTasks(Project project) {
-    project.task('local').dependsOn(['publishToMavenLocal'])
+    Task local = project.task('local')
+    local.dependsOn(['publishToMavenLocal'])
+    // If we're publishing to Artifactory, then insert appropriate dependencies:
     if (project.hasProperty('artifactoryContextUrl')) {
       project.tasks.getByName('publishPlugins')
         .dependsOn(['local', 'artifactoryPublish'])
+      // If we're also publishing to Bintray, add those dependencies as well:
       if (project.hasProperty('bintrayContextUrl'))
         project.tasks.getByName('bintrayUpload')
           .dependsOn(['local', 'artifactoryPublish'])

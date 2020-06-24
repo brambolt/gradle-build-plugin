@@ -24,13 +24,14 @@ ext {
   pluginId = 'com.brambolt.gradle.pluginbuild'
   pluginTags = [ 'plugin', 'build' ]
   pluginWebsite = 'https://github.com/brambolt/gradle-plugin-build'
-  projectVersion = '2020.05.25'
+  projectVersion = bramboltProjectVersion
   vcsUrl = 'https://github.com/brambolt/gradle-plugin-build'
 }
 
 apply plugin: 'com.brambolt.gradle.pluginbuild'
 
 dependencies {
+  implementation 'com.github.jengelman.gradle.plugins:shadow:latest.release'
   implementation 'com.gradle.publish:plugin-publish-plugin:latest.release'
   implementation 'com.jfrog.artifactory:com.jfrog.artifactory.gradle.plugin:latest.release'
   implementation 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.5'
