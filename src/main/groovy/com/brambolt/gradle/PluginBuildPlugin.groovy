@@ -192,7 +192,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to check
    * @return True iff a shadow jar should be built, else false
    */
-  static boolean shouldBuildShadowJar(Project project) {
+  static boolean isShadowJarEnabled(Project project) {
     isProjectPropertySet(project, SHADOW_PLUGIN_INCLUSION)
   }
 
@@ -269,7 +269,7 @@ class PluginBuildPlugin implements Plugin<Project> {
       DependencyHandler handler = project.getDependencies()
       // If we are building a shadow jar then the Gradle API and local
       // Groovy dependencies need to be added to the shadow configuration:
-      String maybeShadowOverride = (shouldBuildShadowJar() ? 'shadow' : 'implementation')
+      String maybeShadowOverride = (isShadowJarEnabled(project) ? 'shadow' : 'implementation')
       handler.add(maybeShadowOverride, handler.gradleApi())
       handler.add(maybeShadowOverride, handler.localGroovy())
       // Test dependencies are added explicitly via testkit, not here.
@@ -338,7 +338,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project being configured
    */
   void configureShadowJarTask(Project project) {
-    if (shouldBuildShadowJar(project))
+    if (isShadowJarEnabled(project))
       project.shadowJar {
         dependsOn(project.jar)
         zip64 = true
