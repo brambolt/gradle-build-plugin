@@ -1,3 +1,4 @@
 
-A plugin to build and publish Gradle plugins.
+Gradle plugin to build and publish Gradle plugins.
+
 
