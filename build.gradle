@@ -18,7 +18,7 @@ plugins {
   id 'com.brambolt.gradle.pluginbuild' apply false
 }
 
-description = 'A Gradle plugin for building Gradle plugins.'
+description = 'The build plugin for building the other Brambolt Gradle plugins.'
 group = 'com.brambolt.gradle'
 
 ext {
