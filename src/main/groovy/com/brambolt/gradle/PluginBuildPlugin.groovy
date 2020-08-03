@@ -32,37 +32,33 @@ class PluginBuildPlugin implements Plugin<Project> {
 
   static final String SNAPSHOT = 'SNAPSHOT'
 
-  static final String SHADOW_PLUGIN_ID = 'com.github.johnrengelman.shadow'
+  static final String ARTIFACTORY_PLUGIN_ID = 'com.jfrog.artifactory'
 
-  static final String SHADOW_PLUGIN_INCLUSION = 'com.brambolt.gradle.pluginbuild.buildShadowJar'
+  static final String BINTRAY_PLUGIN_ID = 'com.jfrog.bintray'
+
+  static final String GRADLE_PLUGIN_PUBLISH_PLUGIN_ID = 'com.gradle.plugin-publish'
+
+  static final String SHADOW_PLUGIN_ID = 'com.github.johnrengelman.shadow'
 
   /**
    * The plugins to apply to the plugin build project.
    */
-  List<String> pluginIds = [
+  static final List<String> PLUGIN_IDS = [
     'java-gradle-plugin',
     'java-library',
+    GRADLE_PLUGIN_PUBLISH_PLUGIN_ID,
     'groovy',
     'maven-publish',
     SHADOW_PLUGIN_ID,
-    'com.gradle.plugin-publish',
-    'com.jfrog.artifactory',
-    'com.jfrog.bintray',
+    ARTIFACTORY_PLUGIN_ID,
+    BINTRAY_PLUGIN_ID,
     'org.ajoberstar.grgit'
   ]
 
   /**
-   * Maps plugin identifier to project property. If a plugin identifier
-   * is included in this map then the plugin will only be applied if the
-   * project property is present with a non-empty value.
-   */
-  Map<String, String> pluginInclusion = [:]
-
-
-  /**
    * The project-specific properties that must be set.
    */
-  List<String> requiredProperties = [
+  static List<String> REQUIRED_PROPERTIES = [
     'artifactId',
     'developers',
     'inceptionYear',
@@ -72,13 +68,17 @@ class PluginBuildPlugin implements Plugin<Project> {
     'pluginId',
     'pluginTags',
     'pluginWebsite',
-    'projectVersion',
+    'release',
     'vcsUrl'
   ]
 
-  PluginBuildPlugin() {
-    pluginInclusion[SHADOW_PLUGIN_ID] = SHADOW_PLUGIN_INCLUSION
-  }
+  /**
+   * Maps plugin identifier to project property. If a plugin identifier
+   * is included in this map then the plugin will only be applied if the
+   * project property is present with a non-empty value that does not
+   * evaluate to false.
+   */
+  Map<String, Closure<Boolean>> pluginInclusion = [:]
 
   /**
    * Applies the plugin and configures the build.
@@ -87,10 +87,12 @@ class PluginBuildPlugin implements Plugin<Project> {
   @Override
   void apply(Project project) {
     project.logger.debug("Applying ${getClass().getCanonicalName()}.")
-    configurePlugins(project)
-    checkProjectProperties(project)
-    configureDerivedProperties(project)
+    configureDerivedPropertiesWithoutPlugins(project)
+    checkProjectProperties(project, REQUIRED_PROPERTIES)
     logProperties(project)
+    configurePluginInclusion(project, pluginInclusion)
+    configurePlugins(project, PLUGIN_IDS, pluginInclusion)
+    configureDerivedPropertiesWithPlugins(project)
     configureRepositories(project)
     configureDependencies(project)
     configureJavaPlugin(project)
@@ -98,7 +100,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     configureJavadocJarTask(project)
     configureSourceJarTask(project)
     configureShadowJarTask(project)
-    configurePublishing(project)
+    configureJavaPublishing(project)
     configureArtifactory(project)
     configureBintray(project)
     configureGradlePlugin(project)
@@ -106,13 +108,26 @@ class PluginBuildPlugin implements Plugin<Project> {
     configureDefaultTasks(project)
   }
 
+  static void configurePluginInclusion(Project project, Map<String, Closure<Boolean>> pluginInclusion) {
+    pluginInclusion[ARTIFACTORY_PLUGIN_ID] = { isArtifactoryPublishingEnabled(project) }
+    pluginInclusion[BINTRAY_PLUGIN_ID] = { isBintrayPublishingEnabled(project) }
+    pluginInclusion[GRADLE_PLUGIN_PUBLISH_PLUGIN_ID] = { isPluginPublishingEnabled(project) }
+    pluginInclusion[SHADOW_PLUGIN_ID] = { isShadowJarEnabled(project) }
+  }
+
   /**
-   * Applies the plugins in the <code>pluginIds</code> list.
+   * Applies the plugins in the <code>PLUGIN_IDS</code> list.
    * @param project The project to configure
-   * @see #pluginIds
+   * @param pluginInclusion Optional losures to check plugin inclusion
+   * @see #PLUGIN_IDS
    */
-  void configurePlugins(Project project) {
-    pluginIds.each { String pluginId -> configurePlugin(project, pluginId) }
+  static void configurePlugins(
+    Project project,
+    List<String> pluginIds,
+    Map<String, Closure<Boolean>> pluginInclusion) {
+    pluginIds.each { String pluginId ->
+      configurePlugin(project, pluginId, pluginInclusion)
+    }
   }
 
   /**
@@ -122,53 +137,124 @@ class PluginBuildPlugin implements Plugin<Project> {
    * the project with a non-empty value.
    * @param project The project to apply the plugin to
    * @param id The identifier of the plugin to apply
+   * @param pluginInclusion Optional losures to check plugin inclusion
    */
-  void configurePlugin(Project project, String id) {
-    if (shouldApplyPlugin(project, id)) {
+  static void configurePlugin(
+    Project project,
+    String id,
+    Map<String, Closure<Boolean>> pluginInclusion) {
+    if (shouldApplyPlugin(project, id, pluginInclusion)) {
       project.logger.debug("Applying plugin ${id}.")
       project.plugins.apply(id)
     }
   }
 
   /**
-   * Uses the <code>pluginInclusion</code> map to determine whether the
-   * plugin identified by the parameter identifier should be applied to the
-   * project. The map associates plugins with project properties; the plugins
-   * should be applied if the map either does not contain the identifier (but
-   * the plugins list has it) or the map points to a project property with a
-   * non-empty value.
+   * Uses the <code>pluginInclusion</code> map to determine whether the plugin
+   * identified by the parameter identifier should be applied to the project.
+   *
    * @param project The project being configured
    * @param pluginId The plugin identifier
+   * @param pluginInclusion Optional closures to check plugin inclusion
    * @return True iff the plugin should be applied to the project
    */
-  boolean shouldApplyPlugin(Project project, String pluginId) {
+  static boolean shouldApplyPlugin(
+    Project project,
+    String pluginId,
+    Map<String, Closure<Boolean>> pluginInclusion) {
     // The inclusion map constrains what can be included.
-    // If the identifier is not in the inclusion map, we can just include it:
-    !pluginInclusion.containsKey(pluginId) ||
-      // But if it is in the map, then the property named needs to be there:
-      isProjectPropertySet(project, pluginInclusion[pluginId])
+    // If the identifier is not in the inclusion map, we can include:
+    boolean result = !pluginInclusion.containsKey(pluginId) ||
+      // But if it is in the map, then the configured check must succeed:
+      pluginInclusion[pluginId].call(project)
+    result
+  }
+
+  /**
+   * Determines whether produced artifacts should be published to Artifactory.
+   *
+   * <p>As of version 4.16.1, the Artifactory plugin can only be applied to the
+   * root project using the <code>plugins { .. }</code> Gradle syntax. When the
+   * plugin needs to be applied to subprojects, it has to be included as a build
+   * script class path dependency and then applied using the
+   * <code>apply plugin:</code> syntax. This plugin only supports applying the
+   * Artifactory when configuring a root project. Multi-project builds can
+   * instead be explicitly configured with a <code>subprojects { .. }</code>
+   * clause in the root project.</code>
+   *
+   * <p>See https://www.jfrog.com/confluence/display/JFROG/Gradle+Artifactory+Plugin.</p>
+   */
+  static boolean isArtifactoryPublishingEnabled(Project project) {
+    if (!project.rootProject.equals(project))
+      return false // See comments above
+    [
+      'artifactoryContextUrl',
+      'artifactoryRepoKey',
+      'artifactoryUser',
+      'artifactoryToken'
+    ].every { isProjectPropertySet(project, it as String) }
   }
 
   /**
    * Determines whether the produced artifacts should be published to Bintray.
+   *
+   * Bintray publishing is only applicable for open source projects that define
+   * the <code>isOpenSource</code> property with the value <code>true</code>.
+   *
    * Bintray publishing is enabled when the Bintray URL and credential project
    * properties are provided, and the project build number is not SNAPSHOT.
    * (Bintray does not provide snapshot publishing; attempts to publish
    * snapshots simply crash the build.)
+   *
    * @param project The project being configured
    * @return True iff artifacts should be published to Bintray
    */
-  boolean isBintrayPublishingEnabled(Project project) {
-    project.hasProperty('bintrayContextUrl') &&
-      (SNAPSHOT != project.buildNumber)
+  static boolean isBintrayPublishingEnabled(Project project) {
+    (SNAPSHOT != project.buildNumber) &&
+      isProjectPropertySet(project, 'bintrayContextUrl') &&
+      isProjectPropertySet(project, 'bintrayKey') &&
+      isProjectPropertySet(project, 'bintrayUser') &&
+      isProjectPropertySet(project, 'isOpenSource')
+  }
+
+  /**
+   * Determines whether the produced artifacts should be published to the
+   * Gradle plugin portal.
+   *
+   * Plugin publishing is only applicable for open source projects that define
+   * the <code>isOpenSource</code> property with the value <code>true</code>.
+   *
+   * Plugin publishing is enabled when the Gradle plugin key and secret project
+   * properties are provided, and the project build number is not SNAPSHOT.
+   *
+   * @param project The project being configured
+   * @return True iff artifacts should be published to the plugin portal
+   */
+  static boolean isPluginPublishingEnabled(Project project) {
+    (SNAPSHOT != project.buildNumber) &&
+      isProjectPropertySet(project, 'gradle.publish.key') &&
+      isProjectPropertySet(project, 'gradle.publish.secret') &&
+      isProjectPropertySet(project, 'isOpenSource')
+  }
+
+  /**
+   * Checks whether a shadow jar should be built. This is determined by the
+   * presence of the <code>buildShadowJar</code> project property, with a
+   * non-empty value.
+   * @param project The project to check
+   * @return True iff a shadow jar should be built, else false
+   */
+  static boolean isShadowJarEnabled(Project project) {
+    isProjectPropertySet(project,
+      'com.brambolt.gradle.pluginbuild.buildShadowJar')
   }
 
   /**
    * Checks that values have been provided for the required project properties.
    * @param project The project to configure
-   * @see #requiredProperties
+   * @see #REQUIRED_PROPERTIES
    */
-  void checkProjectProperties(project) {
+  static void checkProjectProperties(Project project, List<String> requiredProperties) {
     List<String> missing = []
     requiredProperties.each { String propertyName ->
       if (!isProjectPropertySet(project, propertyName))
@@ -180,8 +266,9 @@ class PluginBuildPlugin implements Plugin<Project> {
   }
 
   /**
-   * Checks that the parameter property has a non-empty string or collection
-   * value for the parameter property name.
+   * Checks that the parameter property has a non-empty string that does not
+   * evaluate to <code>false</code>,or a non-empty collection value.
+   *
    * @param project The project to check
    * @param propertyName The property name to check
    */
@@ -193,7 +280,8 @@ class PluginBuildPlugin implements Plugin<Project> {
       case null:
         return false
       case { it instanceof String || it instanceof GString }:
-        return !value.toString().isEmpty()
+        return !value.toString().isEmpty() &&
+          !false.toString().equalsIgnoreCase(value.toString().trim())
       case { it instanceof Collection }:
         return !(value as Collection).isEmpty()
       default:
@@ -202,30 +290,32 @@ class PluginBuildPlugin implements Plugin<Project> {
   }
 
   /**
-   * Checks whether a shadow jar should be built. This is determined by the
-   * presence of the <code>buildShadowJar</code> project property, with a
-   * non-empty value.
-   * @param project The project to check
-   * @return True iff a shadow jar should be built, else false
+   * Defines additional properties that are derived from the required properties.
+   * Some of these are used when figuring out which plugins to apply.
+   *
+   * @param project The project to configure
    */
-  static boolean isShadowJarEnabled(Project project) {
-    isProjectPropertySet(project, SHADOW_PLUGIN_INCLUSION)
+  static void configureDerivedPropertiesWithoutPlugins(Project project) {
+    project.ext {
+      buildNumber = (project.hasProperty('buildNumber')
+        ? project.buildNumber : SNAPSHOT)
+      buildDate = (project.hasProperty('buildDate')
+        ? project.buildDate : new Date().format('yyyy-MM-dd HH:mm:ss'))
+    }
+    project.version = ((SNAPSHOT != project.buildNumber)
+      ? "${project.release}-${project.buildNumber}"
+      : SNAPSHOT)
   }
 
   /**
-   * Defines additional properties that are derived from the required properties.
+   * Configure the properties that we couldn't get values for without plugins.
    * @param project The project to configure
    */
-  void configureDerivedProperties(Project project) {
+  static void configureDerivedPropertiesWithPlugins(Project project) {
     project.ext {
-      buildNumber = project.hasProperty('buildNumber') ? project.buildNumber : SNAPSHOT
-      buildDate = project.hasProperty('buildDate') ? project.buildDate : new Date()
       vcsBranch = project.grgit.branch.current().fullName
       vcsCommit = project.grgit.head().abbreviatedId
     }
-    project.version = ((SNAPSHOT != project.buildNumber)
-      ? "${project.projectVersion}-${project.buildNumber}"
-      : SNAPSHOT)
   }
 
   /**
@@ -235,8 +325,6 @@ class PluginBuildPlugin implements Plugin<Project> {
   void logProperties(Project project) {
     project.logger.info("""
   Artifact id:          ${project.artifactId}
-  Branch:               ${project.vcsBranch}
-  Commit:               ${project.vcsCommit}
   Description:          ${project.description}
   Group:                ${project.group}
   Name:                 ${project.name}
@@ -254,18 +342,31 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Adds repository definitions.
    * @param project The project to configure
    */
-  void configureRepositories(Project project) {
+  static void configureRepositories(Project project) {
     project.repositories {
       mavenLocal()
       if (project.hasProperty('artifactoryContextUrl')) {
         maven {
-          url = project.artifactoryContextUrl
+          name = 'artifactory'
+          url = "${project.artifactoryContextUrl}/${project.artifactoryRepoKey}"
           if (project.hasProperty('artifactoryToken'))
             credentials {
               username = project.artifactoryUser
               password = project.artifactoryToken
             }
         }
+      }
+      if (project.hasProperty('bintrayContextUrl')) {
+        maven {
+          name = 'bintray'
+          url = "${project.bintrayContextUrl}/${project.bintrayRepoKey}"
+          if (project.hasProperty('bintrayKey'))
+            credentials {
+              username = project.bintrayUser
+              password = project.bintrayKey
+            }
+        }
+
       }
       maven {
         name = 'Plugin Portal'
@@ -280,7 +381,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Adds dependencies.
    * @param project The project to configure
    */
-  void configureDependencies(Project project) {
+  static void configureDependencies(Project project) {
     project.dependencies {
       DependencyHandler handler = project.getDependencies()
       // If we are building a shadow jar then the Gradle API and local
@@ -296,7 +397,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Configures the Java plugin including source and target compatibility.
    * @param project The project to configure
    */
-  void configureJavaPlugin(Project project) {
+  static void configureJavaPlugin(Project project) {
     project.sourceCompatibility = 8
     project.targetCompatibility = 8
     project.compileJava.options.encoding = 'UTF-8'
@@ -307,7 +408,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Configures jar task including manifest attributes.
    * @param project The project to configure
    */
-  void configureJarTask(Project project) {
+  static void configureJarTask(Project project) {
     project.jar {
       dependsOn(['test'])
       baseName = project.artifactId
@@ -328,7 +429,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Configures the Javadoc jar task.
    * @param project The project to configure
    */
-  void configureJavadocJarTask(Project project) {
+  static void configureJavadocJarTask(Project project) {
     Jar jar = project.task([type: Jar], 'javadocJar') as Jar
     jar.baseName = project.artifactId
     jar.dependsOn('javadoc')
@@ -340,7 +441,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Configures the source jar task.
    * @param project The project to configure
    */
-  void configureSourceJarTask(Project project) {
+  static void configureSourceJarTask(Project project) {
     SourceSet main = project.sourceSets.getByName('main')
     Jar jar = project.task([type: Jar], 'sourceJar') as Jar
     jar.baseName = project.artifactId
@@ -353,7 +454,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Configures the shadow jar task.
    * @param project The project being configured
    */
-  void configureShadowJarTask(Project project) {
+  static void configureShadowJarTask(Project project) {
     if (isShadowJarEnabled(project))
       project.shadowJar {
         dependsOn(project.jar)
@@ -365,23 +466,23 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Configures publishing.
    * @param project The project to configure
    */
-  void configurePublishing(Project project) {
-    def pomMetaData = {
+  static void configureJavaPublishing(Project project) {
+    Object pomMetaData = {
       licenses {
-        project.licenses.each { l ->
+        project.licenses.each {
           license {
-            name l.name
-            url l.url
+            name it.name
+            url it.url
             distribution 'repo'
           }
         }
       }
       developers {
-        project.developers.each { dev ->
+        project.developers.each {
           developer {
-            id dev.id
-            name dev.name
-            email dev.email
+            id it.id
+            name it.name
+            email it.email
           }
         }
       }
@@ -423,7 +524,9 @@ class PluginBuildPlugin implements Plugin<Project> {
    *
    * @param project The project to configure
    */
-  void configureArtifactory(Project project) {
+  static void configureArtifactory(Project project) {
+    if (!isArtifactoryPublishingEnabled(project))
+      return
     if (project.hasProperty('artifactoryContextUrl')) {
       project.artifactory {
         contextUrl = project.artifactoryContextUrl
@@ -449,8 +552,6 @@ class PluginBuildPlugin implements Plugin<Project> {
           }
         }
       }
-      project.tasks.getByName('artifactoryPublish').dependsOn(
-        project.tasks.getByName('publishToMavenLocal'))
     }
   }
 
@@ -462,20 +563,21 @@ class PluginBuildPlugin implements Plugin<Project> {
    *
    * @param project The project to configure
    */
-  void configureBintray(Project project) {
-    if (isBintrayPublishingEnabled(project))
-      project.publishing {
-        repositories {
-          maven {
-            name = 'bintray'
-            url = "${project.bintrayContextUrl}/${project.bintrayRepoKey}"
-            credentials {
-              username = project.bintrayUser
-              password = project.bintrayKey
-            }
+  static void configureBintray(Project project) {
+    if (!isBintrayPublishingEnabled(project))
+      return // No Bintray...
+    project.publishing {
+      repositories {
+        maven {
+          name = 'bintray'
+          url = "${project.bintrayContextUrl}/${project.bintrayRepoKey}"
+          credentials {
+            username = project.bintrayUser
+            password = project.bintrayKey
           }
         }
       }
+    }
     project.bintray {
       user = project.bintrayUser
       key = project.bintrayKey
@@ -489,10 +591,12 @@ class PluginBuildPlugin implements Plugin<Project> {
         version {
           desc = project.version.toString()
           name = project.version.toString()
-          released  = new Date()
+          released = new Date()
         }
       }
-      publish = true
+      // Bintray is publish, so the project build script must include an
+      // explicit statement like `isOpenSource = true` to enable publishing:
+      publish = isBintrayPublishingEnabled(project)
     }
     project.bintrayUpload {
       // Disable Bintray upload if creating a snapshot version:
@@ -505,7 +609,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    *
    * @param project The project to configure
    */
-  void configureGradlePlugin(Project project) {
+  static void configureGradlePlugin(Project project) {
     project.gradlePlugin {
       plugins {
         thePlugin {
@@ -519,9 +623,16 @@ class PluginBuildPlugin implements Plugin<Project> {
   /**
    * Configures the plugin bundle being published.
    *
+   * Snapshot versions are not published.
+   *
+   * Projects without an <code>isOpenSource</code> property that evaluates to
+   * <code>true</code> are not published.
+   *
    * @param project The project to configure
    */
-  void configurePluginBundle(Project project) {
+  static void configurePluginBundle(Project project) {
+    if (!isPluginPublishingEnabled(project))
+      return // No plugin publishing...
     project.pluginBundle {
       website = project.pluginWebsite
       vcsUrl = project.vcsUrl
@@ -534,7 +645,11 @@ class PluginBuildPlugin implements Plugin<Project> {
       }
     }
     project.tasks.getByName('publishPlugins').configure {
+      // Don't publish snapshot versions on the open Internet:
       onlyIf { SNAPSHOT != project.version }
+      // Don't publish plugins that don't include an explicit build property
+      // declaring they're open source:
+      onlyIf { project.hasProperty('isOpenSource') && project.isOpenSource }
     }
   }
 
@@ -544,22 +659,35 @@ class PluginBuildPlugin implements Plugin<Project> {
    *
    * @param project The project to configure
    */
-  void configureDefaultTasks(Project project) {
+  static void configureDefaultTasks(Project project) {
+    Task publishToMavenLocal = project.tasks.getByName('publishToMavenLocal')
+    Task artifactoryPublish = project.tasks.findByName('artifactoryPublish')
+    Task publishPlugins = project.tasks.findByName('publishPlugins')
+    Task bintrayUpload = project.tasks.findByName('bintrayUpload')
     Task local = project.task('local')
-    local.dependsOn(['publishToMavenLocal'])
-    // If we're publishing to Artifactory, then insert appropriate dependencies:
-    if (project.hasProperty('artifactoryContextUrl')) {
-      project.tasks.getByName('publishPlugins')
-        .dependsOn(['local', 'artifactoryPublish'])
-      // If we're also publishing to Bintray, add those dependencies as well:
-      if (project.hasProperty('bintrayContextUrl'))
-        project.tasks.getByName('bintrayUpload')
-          .dependsOn(['local', 'artifactoryPublish'])
+    local.group = 'Brambolt'
+    local.dependsOn(publishToMavenLocal)
+    if (null != artifactoryPublish)
+      artifactoryPublish.dependsOn(local)
+    if (null != bintrayUpload)
+      bintrayUpload.dependsOn(local)
+    if (null != publishPlugins)
+      publishPlugins.dependsOn(local)
+    if (null != artifactoryPublish) {
+      if (null != publishPlugins)
+        publishPlugins.dependsOn(artifactoryPublish)
+      if (null != bintrayUpload)
+        bintrayUpload.dependsOn(artifactoryPublish)
     }
     Task all = project.task('all')
-    all.dependsOn(['publishPlugins'])
-    if (project.hasProperty('bintrayContextUrl'))
-      all.dependsOn(['bintrayUpload'])
+    all.group = 'Brambolt'
+    all.dependsOn(local)
+    if (null != artifactoryPublish)
+      all.dependsOn(artifactoryPublish)
+    if (null != bintrayUpload)
+      all.dependsOn(bintrayUpload)
+    if (null != publishPlugins)
+      all.dependsOn(publishPlugins)
     project.setDefaultTasks([all.name])
   }
 }
