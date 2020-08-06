@@ -469,20 +469,20 @@ class PluginBuildPlugin implements Plugin<Project> {
   static void configureJavaPublishing(Project project) {
     Object pomMetaData = {
       licenses {
-        project.licenses.each {
+        project.licenses.each { l ->
           license {
-            name it.name
-            url it.url
+            name l.name
+            url l.url
             distribution 'repo'
           }
         }
       }
       developers {
-        project.developers.each {
+        project.developers.each { d ->
           developer {
-            id it.id
-            name it.name
-            email it.email
+            id d.id
+            name d.name
+            email d.email
           }
         }
       }

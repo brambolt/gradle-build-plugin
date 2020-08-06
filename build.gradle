@@ -16,6 +16,7 @@
 
 plugins {
   id 'com.brambolt.gradle.build.plugin' apply false
+  // id 'com.brambolt.gradle.pluginbuild' apply false
 }
 
 description = 'The Brambolt plugin build.'
@@ -45,6 +46,7 @@ ext {
 }
 
 apply plugin: 'com.brambolt.gradle.build.plugin'
+// apply plugin: 'com.brambolt.gradle.pluginbuild'
 
 dependencies {
   implementation 'com.github.jengelman.gradle.plugins:shadow:6.0.0'
