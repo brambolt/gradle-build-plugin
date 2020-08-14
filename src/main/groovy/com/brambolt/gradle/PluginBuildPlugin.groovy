@@ -297,14 +297,10 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   static void configureDerivedPropertiesWithoutPlugins(Project project) {
     project.ext {
-      buildNumber = (project.hasProperty('buildNumber')
-        ? project.buildNumber : SNAPSHOT)
-      buildDate = (project.hasProperty('buildDate')
-        ? project.buildDate : new Date().format('yyyy-MM-dd HH:mm:ss'))
+      buildDate = BuildPlugins.getBuildDate(project)
+      buildNumber = BuildPlugins.getBuildNumber(project)
     }
-    project.version = ((SNAPSHOT != project.buildNumber)
-      ? "${project.release}-${project.buildNumber}"
-      : SNAPSHOT)
+    project.version = BuildPlugins.getBramboltVersion(project)
   }
 
   /**
