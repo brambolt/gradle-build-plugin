@@ -19,9 +19,20 @@ pluginManagement {
     mavenLocal()
     gradlePluginPortal()
     maven { url 'https://dl.bintray.com/brambolt/public' }
+    if (artifactoryContextUrl) {
+      maven {
+        name = 'artifactory'
+        url = "${artifactoryContextUrl}/${artifactoryRepoKey}"
+        if (artifactoryToken)
+          credentials {
+            username = artifactoryUser
+            password = artifactoryToken
+          }
+      }
+    }
   }
   plugins {
-    // id 'com.brambolt.gradle.pluginbuild' version '2020.06.03-4029'
+    // id 'com.brambolt.gradle.build.plugin' version '2020.08.13-4013'
     id 'com.brambolt.gradle.build.plugin' version bramboltVersion
   }
 }
