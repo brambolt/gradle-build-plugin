@@ -297,10 +297,12 @@ class PluginBuildPlugin implements Plugin<Project> {
    */
   static void configureDerivedPropertiesWithoutPlugins(Project project) {
     project.ext {
+      bramboltRelease = BuildPlugins.getBramboltRelease(project)
+      bramboltVersion = BuildPlugins.getBramboltVersion(project)
       buildDate = BuildPlugins.getBuildDate(project)
       buildNumber = BuildPlugins.getBuildNumber(project)
     }
-    project.version = BuildPlugins.getBramboltVersion(project)
+    project.version = project.bramboltVersion
   }
 
   /**
@@ -318,7 +320,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * Logs the required and derived project properties.
    * @param project The project to configure
    */
-  void logProperties(Project project) {
+  static void logProperties(Project project) {
     project.logger.info("""
   Artifact id:          ${project.artifactId}
   Description:          ${project.description}
