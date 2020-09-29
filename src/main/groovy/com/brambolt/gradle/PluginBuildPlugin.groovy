@@ -279,6 +279,8 @@ class PluginBuildPlugin implements Plugin<Project> {
     switch (value) {
       case null:
         return false
+      case { it instanceof Boolean }:
+        return value as Boolean
       case { it instanceof String || it instanceof GString }:
         return !value.toString().isEmpty() &&
           !false.toString().equalsIgnoreCase(value.toString().trim())
