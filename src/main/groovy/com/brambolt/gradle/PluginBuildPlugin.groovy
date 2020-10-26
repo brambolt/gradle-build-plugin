@@ -38,6 +38,8 @@ class PluginBuildPlugin implements Plugin<Project> {
 
   static final String GRADLE_PLUGIN_PUBLISH_PLUGIN_ID = 'com.gradle.plugin-publish'
 
+  static final String GRGIT_PLUGIN_ID = 'org.ajoberstar.grgit'
+
   static final String SHADOW_PLUGIN_ID = 'com.github.johnrengelman.shadow'
 
   /**
@@ -52,7 +54,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     SHADOW_PLUGIN_ID,
     ARTIFACTORY_PLUGIN_ID,
     BINTRAY_PLUGIN_ID,
-    'org.ajoberstar.grgit'
+    GRGIT_PLUGIN_ID
   ]
 
   /**
@@ -112,6 +114,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     pluginInclusion[ARTIFACTORY_PLUGIN_ID] = { isArtifactoryPublishingEnabled(project) }
     pluginInclusion[BINTRAY_PLUGIN_ID] = { isBintrayPublishingEnabled(project) }
     pluginInclusion[GRADLE_PLUGIN_PUBLISH_PLUGIN_ID] = { isPluginPublishingEnabled(project) }
+    pluginInclusion[GRGIT_PLUGIN_ID] = { isGitHosted(project) }
     pluginInclusion[SHADOW_PLUGIN_ID] = { isShadowJarEnabled(project) }
   }
 
@@ -238,6 +241,17 @@ class PluginBuildPlugin implements Plugin<Project> {
   }
 
   /**
+   * Checks whether git integration should be enabled. This is determined by
+   * the presence of the <code>isGitHosted</code> project property, with a
+   * non-empty value.
+   * @param The project to check
+   * @return True iff git integration is indicated, else false
+   */
+  static boolean isGitHosted(Project project) {
+    isProjectPropertySet(project, 'isGitHosted')
+  }
+
+  /**
    * Checks whether a shadow jar should be built. This is determined by the
    * presence of the <code>buildShadowJar</code> project property, with a
    * non-empty value.
@@ -312,10 +326,11 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   static void configureDerivedPropertiesWithPlugins(Project project) {
-    project.ext {
-      vcsBranch = project.grgit.branch.current().fullName
-      vcsCommit = project.grgit.head().abbreviatedId
-    }
+    if (project.hasProperty('grgit') && null != project.grgit)
+      project.ext {
+        vcsBranch = project.grgit.branch.current().fullName
+        vcsCommit = project.grgit.head().abbreviatedId
+      }
   }
 
   /**
@@ -323,19 +338,28 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   static void logProperties(Project project) {
-    project.logger.info("""
+    // The properties are arranged alphabetically:
+    String message = """
   Artifact id:          ${project.artifactId}
   Description:          ${project.description}
   Group:                ${project.group}
-  Name:                 ${project.name}
+  Name:                 ${project.name}"""
+    if (project.hasProperty('pluginClass'))
+      message += """
   Plugin class:         ${project.pluginClass}
   Plugin display name:  ${project.pluginDisplayName}
   Plugin id:            ${project.pluginId}
   Plugin tags:          ${project.pluginTags}
-  Plugin website:       ${project.pluginWebsite}
+  Plugin website:       ${project.pluginWebsite}"""
+    if (project.hasProperty('vcsBranch'))
+      message += """
+  VCS branch:               ${project.vcsBranch}
+  VCS commit:               ${project.vcsCommit}"""
+    message += """
   VCS URL:              ${project.vcsUrl}
   Version:              ${project.version}
-""")
+"""
+    project.logger.info(message)
   }
 
   /**
@@ -409,19 +433,27 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @param project The project to configure
    */
   static void configureJarTask(Project project) {
+    Map<String, String> manifestAttributes = [
+      'Build-Date'     : project.buildDate,
+      'Build-Number'   : project.buildNumber,
+      'Build-Version'  : project.version.toString(),
+      'Product-Version': project.version.toString()
+    ]
+    if (isGitHosted(project))
+      manifestAttributes.putAll([
+        'Git-Branch'     : project.vcsBranch.toString(),
+        'Git-Commit'     : project.vcsCommit
+      ])
     project.jar {
       dependsOn(['test'])
       baseName = project.artifactId
       manifest {
-        attributes([
-          'Build-Date'     : project.buildDate,
-          'Build-Number'   : project.buildNumber,
-          'Build-Version'  : project.version,
-          'Git-Branch'     : project.vcsBranch,
-          'Git-Commit'     : project.vcsCommit,
-          'Product-Version': project.version
-        ], 'Brambolt')
+        attributes(manifestAttributes, 'Brambolt')
       }
+      if (project.hasProperty('artifactAppendix'))
+        appendix = project.artifactAppendix
+      if (project.hasProperty('artifactClassifier'))
+        classifier = project.artifactClassifier
     }
   }
 
@@ -433,8 +465,12 @@ class PluginBuildPlugin implements Plugin<Project> {
     Jar jar = project.task([type: Jar], 'javadocJar') as Jar
     jar.baseName = project.artifactId
     jar.dependsOn('javadoc')
-    jar.classifier = 'javadoc'
     jar.from(project.property('javadoc'))
+    jar.classifier = 'javadoc'
+    if (project.hasProperty('artifactAppendix'))
+      jar.appendix = project.artifactAppendix
+    if (project.hasProperty('artifactClassifier'))
+      jar.classifier = "${project.artifactClassifier}-${jar.classifier}"
   }
 
   /**
@@ -446,8 +482,12 @@ class PluginBuildPlugin implements Plugin<Project> {
     Jar jar = project.task([type: Jar], 'sourceJar') as Jar
     jar.baseName = project.artifactId
     jar.dependsOn('jar')
-    jar.classifier = 'sources'
     jar.from(main.getAllSource())
+    jar.classifier = 'sources'
+    if (project.hasProperty('artifactAppendix'))
+      jar.appendix = project.artifactAppendix
+    if (project.hasProperty('artifactClassifier'))
+      jar.classifier = "${project.artifactClassifier}-${jar.classifier}"
   }
 
   /**
@@ -538,7 +578,7 @@ class PluginBuildPlugin implements Plugin<Project> {
             maven = true
           }
           defaults {
-            publications('mavenJava')
+            publications(project.publishing.publications.names.toArray())
             publishArtifacts = true
             publishPom = true
           }
