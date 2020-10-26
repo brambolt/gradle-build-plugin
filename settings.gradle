@@ -32,9 +32,9 @@ pluginManagement {
     }
   }
   plugins {
-    // id 'com.brambolt.gradle.build.plugin' version '2020.08.13-4013'
+    // id 'com.brambolt.gradle.build.plugin' version '2020.10.13-4228'
     id 'com.brambolt.gradle.build.plugin' version bramboltVersion
   }
 }
 
-rootProject.name = 'gradle-build-plugin'
+rootProject.name = 'brambolt-gradle-build-plugin'
