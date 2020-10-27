@@ -19,7 +19,7 @@ pluginManagement {
     mavenLocal()
     gradlePluginPortal()
     maven { url 'https://dl.bintray.com/brambolt/public' }
-    if (artifactoryContextUrl) {
+    if (null != artifactoryContextUrl && !artifactoryContextUrl.isEmpty()) {
       maven {
         name = 'artifactory'
         url = "${artifactoryContextUrl}/${artifactoryRepoKey}"
