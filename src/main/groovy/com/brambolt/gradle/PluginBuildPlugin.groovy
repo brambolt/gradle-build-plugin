@@ -25,12 +25,23 @@ import org.gradle.api.publish.maven.MavenPublication
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.bundling.Jar
 
+import static BuildProperty.ARTIFACT_ID
+import static BuildProperty.DEVELOPERS
+import static BuildProperty.INCEPTION_YEAR
+import static BuildProperty.LICENSES
+import static BuildProperty.PLUGIN_CLASS
+import static BuildProperty.PLUGIN_DISPLAY_NAME
+import static BuildProperty.PLUGIN_ID
+import static BuildProperty.PLUGIN_TAGS
+import static BuildProperty.PLUGIN_WEBSITE
+import static BuildProperty.RELEASE
+import static BuildProperty.VCS_URL
+import static BuildPropertyValue.SNAPSHOT
+
 /**
- * Configures a Gradle build to build and publish a Gradle plugin.
+ * Configures a Gradle build to build and publish a Gradle plugin. Opinionated.
  */
 class PluginBuildPlugin implements Plugin<Project> {
-
-  static final String SNAPSHOT = 'SNAPSHOT'
 
   static final String ARTIFACTORY_PLUGIN_ID = 'com.jfrog.artifactory'
 
@@ -61,17 +72,17 @@ class PluginBuildPlugin implements Plugin<Project> {
    * The project-specific properties that must be set.
    */
   static List<String> REQUIRED_PROPERTIES = [
-    'artifactId',
-    'developers',
-    'inceptionYear',
-    'licenses',
-    'pluginClass',
-    'pluginDisplayName',
-    'pluginId',
-    'pluginTags',
-    'pluginWebsite',
-    'release',
-    'vcsUrl'
+    ARTIFACT_ID.name,
+    DEVELOPERS.name,
+    INCEPTION_YEAR.name,
+    LICENSES.name,
+    PLUGIN_CLASS.name,
+    PLUGIN_DISPLAY_NAME.name,
+    PLUGIN_ID.name,
+    PLUGIN_TAGS.name,
+    PLUGIN_WEBSITE.name,
+    RELEASE.name,
+    VCS_URL.name
   ]
 
   /**
@@ -188,7 +199,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * <p>See https://www.jfrog.com/confluence/display/JFROG/Gradle+Artifactory+Plugin.</p>
    */
   static boolean isArtifactoryPublishingEnabled(Project project) {
-    if (!project.rootProject.equals(project))
+    if (project.rootProject != project)
       return false // See comments above
     [
       'artifactoryContextUrl',
@@ -213,7 +224,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @return True iff artifacts should be published to Bintray
    */
   static boolean isBintrayPublishingEnabled(Project project) {
-    (SNAPSHOT != project.buildNumber) &&
+    (SNAPSHOT.name() != project.buildNumber) &&
       isProjectPropertySet(project, 'bintrayContextUrl') &&
       isProjectPropertySet(project, 'bintrayKey') &&
       isProjectPropertySet(project, 'bintrayUser') &&
