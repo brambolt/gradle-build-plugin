@@ -224,7 +224,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @return True iff artifacts should be published to Bintray
    */
   static boolean isBintrayPublishingEnabled(Project project) {
-    (SNAPSHOT.name() != project.buildNumber) &&
+    (SNAPSHOT.value != project.buildNumber) &&
       isProjectPropertySet(project, 'bintrayContextUrl') &&
       isProjectPropertySet(project, 'bintrayKey') &&
       isProjectPropertySet(project, 'bintrayUser') &&
@@ -245,7 +245,7 @@ class PluginBuildPlugin implements Plugin<Project> {
    * @return True iff artifacts should be published to the plugin portal
    */
   static boolean isPluginPublishingEnabled(Project project) {
-    (SNAPSHOT != project.buildNumber) &&
+    (SNAPSHOT.value != project.buildNumber) &&
       isProjectPropertySet(project, 'gradle.publish.key') &&
       isProjectPropertySet(project, 'gradle.publish.secret') &&
       isProjectPropertySet(project, 'isOpenSource')
@@ -697,7 +697,7 @@ class PluginBuildPlugin implements Plugin<Project> {
     }
     project.tasks.getByName('publishPlugins').configure {
       // Don't publish snapshot versions on the open Internet:
-      onlyIf { SNAPSHOT != project.version }
+      onlyIf { SNAPSHOT.value != project.version }
       // Don't publish plugins that don't include an explicit build property
       // declaring they're open source:
       onlyIf { project.hasProperty('isOpenSource') && project.isOpenSource }
