@@ -32,7 +32,6 @@ pluginManagement {
     }
   }
   plugins {
-    // id 'com.brambolt.gradle.build.plugin' version '2020.10.13-4228'
     id 'com.brambolt.gradle.build.plugin' version bramboltVersion
   }
 }

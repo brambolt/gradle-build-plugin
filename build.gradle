@@ -48,14 +48,14 @@ ext {
 apply plugin: 'com.brambolt.gradle.build.plugin'
 
 dependencies {
-  implementation 'com.github.jengelman.gradle.plugins:shadow:6.0.0'
-  implementation 'com.gradle.publish:plugin-publish-plugin:latest.release'
-  implementation 'com.jfrog.artifactory:com.jfrog.artifactory.gradle.plugin:4.16.1'
-  implementation 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.8.5'
-  implementation 'org.ajoberstar.grgit:grgit-gradle:4.0.2'
-  testImplementation 'org.slf4j:slf4j-api:1.7.30'
-  testImplementation 'junit:junit:latest.release'
-  testImplementation 'org.spockframework:spock-core:1.3-groovy-2.5'
-  testRuntime 'org.slf4j:slf4j-simple:1.7.30'
+  implementation "com.github.jengelman.gradle.plugins:shadow:${shadowPluginVersion}"
+  implementation "com.gradle.publish:plugin-publish-plugin:${pluginPublishPluginVersion}"
+  implementation "com.jfrog.artifactory:com.jfrog.artifactory.gradle.plugin:${artifactoryPluginVersion}"
+  implementation "com.jfrog.bintray.gradle:gradle-bintray-plugin:${bintrayPluginVersion}"
+  implementation "org.ajoberstar.grgit:grgit-gradle:${grgitPluginVersion}"
+  testImplementation "org.slf4j:slf4j-api:${slf4jVersion}"
+  testImplementation "junit:junit:${junitVersion}"
+  testImplementation "org.spockframework:spock-core:${spockVersion}"
+  testRuntime "org.slf4j:slf4j-simple:${slf4jVersion}"
 }
 
