@@ -263,6 +263,34 @@ class PluginBuildPlugin implements Plugin<Project> {
   }
 
   /**
+   * Checks whether the project needs a Gradle API dependency. This is
+   * determined by the presence of the <code>dependOnGradleApi</code> project
+   * property, with a non-empty value. Set this property only if the project
+   * code depends on classes like <code>GradleException</code> or the like.
+   *
+   * @param project The project to check
+   * @return True iff a Gradle API dependency is indicated, else false
+   */
+  static boolean isGradleApiDependedOn(Project project) {
+    isProjectPropertySet(project,
+      'com.brambolt.gradle.build.plugin.dependOn.gradleApi')
+  }
+
+  /**
+   * Checks whether the project needs a Groovy dependency. This is
+   * determined by the presence of the <code>dependOnLocalGroovy</code> project
+   * property, with a non-empty value. Set this property only if the project
+   * code includes Groovy files.
+   *
+   * @param project The project to check
+   * @return True iff Groovy code is included, else false
+   */
+  static boolean isLocalGroovyDependedOn(Project project) {
+    isProjectPropertySet(project,
+      'com.brambolt.gradle.build.plugin.dependOn.localGroovy')
+  }
+
+  /**
    * Checks whether a shadow jar should be built. This is determined by the
    * presence of the <code>buildShadowJar</code> project property, with a
    * non-empty value.
@@ -422,8 +450,10 @@ class PluginBuildPlugin implements Plugin<Project> {
       // If we are building a shadow jar then the Gradle API and local
       // Groovy dependencies need to be added to the shadow configuration:
       String maybeShadowOverride = (isShadowJarEnabled(project) ? 'shadow' : 'implementation')
-      handler.add(maybeShadowOverride, handler.gradleApi())
-      handler.add(maybeShadowOverride, handler.localGroovy())
+      if (isGradleApiDependedOn(project))
+        handler.add(maybeShadowOverride, handler.gradleApi())
+      if (isLocalGroovyDependedOn(project))
+        handler.add(maybeShadowOverride, handler.localGroovy())
       // Test dependencies are added explicitly via testkit, not here.
     }
   }
